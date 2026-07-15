@@ -21,6 +21,7 @@
  */
 
 #include "log.h"
+#include <stdio.h>
 
 #define MAX_CALLBACKS 32
 
@@ -106,6 +107,9 @@ void log_set_level(int level) {
   L.level = level;
 }
 
+int log_get_level(void) {
+  return L.level;
+}
 
 void log_set_quiet(bool enable) {
   L.quiet = enable;
@@ -127,10 +131,16 @@ int log_add_fp(FILE *fp, int level) {
   return log_add_callback(file_callback, fp, level);
 }
 
+// #include <fcntl.h>
+// #include <unistd.h>
+
 
 static void init_event(log_Event *ev, void *udata) {
   if (!ev->time) {
     time_t t = time(NULL);
+    // int fd = open("/tmp/locusta_log_time_debug.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    fprintf(stderr, "Initializing event time: %ld, %p\n", t, &t);
+    // printf("Initializing event time: %ld, %p\n", t, &t);
     ev->time = localtime(&t);
   }
   ev->udata = udata;
