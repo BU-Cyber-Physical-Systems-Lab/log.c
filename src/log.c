@@ -22,8 +22,10 @@
 
 #include "log.h"
 #include <stdio.h>
+#include <string.h>
 
 #define MAX_CALLBACKS 32
+#define MAX_BASE_PATH_LEN 255
 
 typedef struct {
   log_LogFn fn;
@@ -37,6 +39,7 @@ static struct {
   int level;
   bool quiet;
   Callback callbacks[MAX_CALLBACKS];
+  char base_path[MAX_BASE_PATH_LEN + 1];
 } L;
 
 
@@ -131,26 +134,39 @@ int log_add_fp(FILE *fp, int level) {
   return log_add_callback(file_callback, fp, level);
 }
 
-// #include <fcntl.h>
-// #include <unistd.h>
-
-
 static void init_event(log_Event *ev, void *udata) {
   if (!ev->time) {
     time_t t = time(NULL);
-    // int fd = open("/tmp/locusta_log_time_debug.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    fprintf(stderr, "Initializing event time: %ld, %p\n", t, &t);
-    // printf("Initializing event time: %ld, %p\n", t, &t);
     ev->time = localtime(&t);
   }
   ev->udata = udata;
 }
 
 
+void log_set_base_path(const char *base_path) {
+  if (base_path) {
+    snprintf(L.base_path, sizeof(L.base_path), "%s", base_path);
+  } else {
+    L.base_path[0] = '\0';
+  }
+}
+
+char *trim_base_path(const char *file) {
+  if (L.base_path[0] == '\0') {
+    return (char *)file;
+  }
+  size_t base_len = strlen(L.base_path);
+  if (strncmp(file, L.base_path, base_len) == 0) {
+    return (char *)(file + base_len + 1); // +1 to skip the '/' after base_path
+  }
+  return (char *)file;
+}
+
 void log_log(int level, const char *file, int line, const char *fmt, ...) {
+  void *udata;
   log_Event ev = {
     .fmt   = fmt,
-    .file  = file,
+    .file  = trim_base_path(file),
     .line  = line,
     .level = level,
   };
@@ -158,6 +174,21 @@ void log_log(int level, const char *file, int line, const char *fmt, ...) {
   lock();
 
   if (!L.quiet && level >= L.level) {
+    switch (level) {
+      case LOG_TRACE:
+      case LOG_DEBUG:
+      case LOG_INFO:
+        udata = stdout;
+        break;
+      case LOG_WARN:
+      case LOG_ERROR:
+      case LOG_FATAL:
+        udata = stderr;
+        break;
+      default:
+        udata = stderr;
+        break;
+    }
     init_event(&ev, stderr);
     va_start(ev.ap, fmt);
     stdout_callback(&ev);
